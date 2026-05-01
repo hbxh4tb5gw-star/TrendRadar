@@ -1,0 +1,42 @@
+name: 每日热点推送
+
+on:
+  schedule:
+    - cron: '0 9 * * *'      # 每天上午9点自动运行
+  workflow_dispatch:          # 允许手动触发
+
+jobs:
+  push-hot:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 获取微博热搜
+        id: weibo
+        run: |
+          DATA=$(curl -s "https://api.52vmy.cn/api/wl/hot?type=weibo")
+          echo "weibo_data<<EOF" >> $GITHUB_OUTPUT
+          echo "$DATA" | jq -r '.data[:10] | .[] | "\(.index). \(.title) —— 热度 \(.hot)"' >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+        continue-on-error: true
+
+      - name: 获取知乎热榜
+        id: zhihu
+        run: |
+          DATA=$(curl -s "https://api.52vmy.cn/api/wl/hot?type=zhihu")
+          echo "zhihu_data<<EOF" >> $GITHUB_OUTPUT
+          echo "$DATA" | jq -r '.data[:10] | .[] | "\(.index). \(.title) —— 热度 \(.hot)"' >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+        continue-on-error: true
+
+      - name: 组装消息并推送
+        run: |
+          MSG="## 📰 今日热点速览\n\n"
+          MSG="$MSG ### 🔥 微博热搜\n"
+          MSG="$MSG ${{ steps.weibo.outputs.weibo_data }}\n\n"
+          MSG="$MSG ### 📚 知乎热榜\n"
+          MSG="$MSG ${{ steps.zhihu.outputs.zhihu_data }}\n\n"
+          MSG="$MSG ---\n> 推送时间：$(date '+%Y-%m-%d %H:%M:%S')\n> 详情请打开链接查看"
+          
+          # 发送到Server酱
+          curl -X POST "https://sctapi.ftqq.com/${{ secrets.SENDKEY }}.send" \
+            -d "title=每日热点速递" \
+            -d "desp=$(echo -e "$MSG")"
